@@ -1,0 +1,70 @@
+name: Deploy EKS Cluster and Nginx
+
+on:
+    workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v2
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: us-east-1
+
+    - name: Generate SSH key
+      run: |
+        ssh-keygen -t rsa -b 4096 -f jenkins.pem -N ""
+        mv jenkins.pem.pub jenkins.pub
+
+    - name: Deploy CloudFormation stack
+      id: deploy-cfn
+      run: |
+        aws cloudformation deploy \
+          --template-file cloudformation/ec2-stack.yaml \
+          --stack-name jenkins-ec2-stack \
+          --parameter-overrides KeyName=jenkins PublicKeyMaterial="$(cat jenkins.pub)" \
+          --capabilities CAPABILITY_IAM
+
+    - name: Get EC2 Public IP
+      id: ec2-ip
+      run: |
+        EC2_IP=$(aws cloudformation describe-stacks --stack-name jenkins-ec2-stack --query "Stacks[0].Outputs[?OutputKey=='EC2PublicIP'].OutputValue" --output text)
+        echo "ec2_ip=$EC2_IP" >> $GITHUB_OUTPUT
+
+    - name: Wait for EC2 instance to be ready
+      run: sleep 300
+
+    - name: Connect to EC2 and setup cluster
+      run: |
+        chmod 600 jenkins.pem
+        ssh -i jenkins.pem -o StrictHostKeyChecking=no ubuntu@${{ steps.ec2-ip.outputs.ec2_ip }} 'bash -s' < ec2_user_data.sh
+
+    - name: Deploy Nginx
+      run: |
+        ssh -i jenkins.pem -o StrictHostKeyChecking=no ubuntu@${{ steps.ec2-ip.outputs.ec2_ip }} 'kubectl apply -f kubernetes/nginx-deployment.yaml'
+        ssh -i jenkins.pem -o StrictHostKeyChecking=no ubuntu@${{ steps.ec2-ip.outputs.ec2_ip }} 'kubectl apply -f kubernetes/nginx-service.yaml'
+
+    - name: Get Nginx Service IP
+      run: |
+        NGINX_IP=$(ssh -i jenkins.pem -o StrictHostKeyChecking=no ubuntu@${{ steps.ec2-ip.outputs.ec2_ip }} 'kubectl get services nginx-service -o jsonpath="{.status.loadBalancer.ingress[0].hostname}"')
+        echo "nginx_ip=$NGINX_IP" >> $GITHUB_OUTPUT
+
+    - name: Save connection information
+      run: |
+        echo "EC2 Public IP: ${{ steps.ec2-ip.outputs.ec2_ip }}" > connection_info.txt
+        echo "Nginx Service IP: ${{ steps.nginx-ip.outputs.nginx_ip }}" >> connection_info.txt
+        echo "To connect via SSH: ssh -i jenkins.pem ubuntu@${{ steps.ec2-ip.outputs.ec2_ip }}" >> connection_info.txt
+
+    - name: Upload SSH key and connection info
+      uses: actions/upload-artifact@v3
+      with:
+        name: ssh-key-and-info
+        path: |
+          jenkins.pem
+          connection_info.txt
