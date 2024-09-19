@@ -37,6 +37,14 @@ jobs:
         EC2_IP=$(aws cloudformation describe-stacks --stack-name jenkins-ec2-stack --query "Stacks[0].Outputs[?OutputKey=='EC2PublicIP'].OutputValue" --output text)
         echo "ec2_ip=$EC2_IP" >> $GITHUB_OUTPUT
 
+    - name: Upload SSH key and connection info
+      uses: actions/upload-artifact@v3
+      with:
+        name: ssh-key-and-info
+        path: |
+          jenkins.pem
+          connection_info.txt
+          
     - name: Wait for EC2 instance to be ready
       run: sleep 300
 
@@ -61,10 +69,3 @@ jobs:
         echo "Nginx Service IP: ${{ steps.nginx-ip.outputs.nginx_ip }}" >> connection_info.txt
         echo "To connect via SSH: ssh -i jenkins.pem ubuntu@${{ steps.ec2-ip.outputs.ec2_ip }}" >> connection_info.txt
 
-    - name: Upload SSH key and connection info
-      uses: actions/upload-artifact@v3
-      with:
-        name: ssh-key-and-info
-        path: |
-          jenkins.pem
-          connection_info.txt
