@@ -47,7 +47,7 @@ aws --version
 
 echo "Installing kubectl"
 wait_for_apt
-sudo apt-get install -y kubectl
+#sudo apt-get install -y kubectl
 curl -O https://s3.us-west-2.amazonaws.com/amazon-eks/1.30.2/2024-07-12/bin/linux/amd64/kubectl
 chmod +x ./kubectl
 mkdir -p $HOME/bin && cp ./kubectl $HOME/bin/kubectl && export PATH=$PATH:$HOME/bin
@@ -84,5 +84,7 @@ echo "Creating EKS cluster..."
 eksctl create cluster --name mi-cluster-eks --region us-east-1 --node-type t3.micro --nodes 2
 
 echo "Cluster created successfully"
+
+aws eks update-kubeconfig --region us-east-1 --name my-cluster-eks
 
 echo "All necessary tools have been installed and cluster is ready."
