@@ -80,10 +80,23 @@ helm version
 helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
 helm repo update
 
+# Crear cluster EKS
 echo "Creating EKS cluster..."
-eksctl create cluster --name mi-cluster-eks --region us-east-1 --node-type t3.micro --nodes 2
+eksctl create cluster --name mi-cluster-eks --region us-east-1 --node-type t3.small --nodes 2
+
+# Configurar kubectl
+aws eks get-token --cluster-name mi-cluster-eks | kubectl apply -f -
 
 echo "Cluster created successfully"
+
+# Asegurarse de que las configuraciones estén disponibles para el usuario ubuntu
+mkdir -p /home/ubuntu/.kube
+sudo cp /root/.kube/config /home/ubuntu/.kube/config
+sudo chown ubuntu:ubuntu /home/ubuntu/.kube/config
+
+# Añadir kubectl al PATH del usuario ubuntu
+echo 'export PATH=$PATH:/usr/local/bin' >> /home/ubuntu/.bashrc
+source /home/ubuntu/.bashrc
 
 aws eks update-kubeconfig --region us-east-1 --name my-cluster-eks
 

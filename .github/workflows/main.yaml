@@ -4,7 +4,7 @@ on:
     workflow_dispatch:
 
 jobs:
-  deploy:
+  Credenciales:
     runs-on: ubuntu-latest
     steps:
     - name: Checkout code
@@ -22,6 +22,10 @@ jobs:
         ssh-keygen -t rsa -b 4096 -f jenkins.pem -N ""
         mv jenkins.pem.pub jenkins.pub
 
+  Deploy_CloudFormation:
+    needs: Credenciales
+    runs-on: ubuntu-latest
+    steps:      
     - name: Deploy CloudFormation stack
       id: deploy-cfn
       run: |
@@ -37,6 +41,16 @@ jobs:
         EC2_IP=$(aws cloudformation describe-stacks --stack-name jenkins-ec2-stack --query "Stacks[0].Outputs[?OutputKey=='EC2PublicIP'].OutputValue" --output text)
         echo "ec2_ip=$EC2_IP" >> $GITHUB_OUTPUT
 
+    - name: Setup AWS credentials on EC2
+      run: |
+        chmod 600 jenkins.pem
+        ssh -i jenkins.pem -o StrictHostKeyChecking=no ubuntu@${{ steps.ec2-ip.outputs.ec2_ip }}
+        mkdir -p ~/.aws
+        echo "[default]
+        aws_access_key_id=${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws_secret_access_key=${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        region=us-east-1" > ~/.aws/credentials      
+
     - name: Upload SSH key and connection info
       uses: actions/upload-artifact@v3
       with:
@@ -45,14 +59,21 @@ jobs:
           jenkins.pem
           connection_info.txt
           
-    - name: Wait for EC2 instance to be ready
-      run: sleep 300
-
+#    - name: Wait for EC2 instance to be ready
+#      run: sleep 300
+  Conexion_EC2:
+    needs: Deploy_CloudFormation
+    runs-on: ubuntu-latest
+    steps:  
     - name: Connect to EC2 and setup cluster
       run: |
         chmod 600 jenkins.pem
         ssh -i jenkins.pem -o StrictHostKeyChecking=no ubuntu@${{ steps.ec2-ip.outputs.ec2_ip }} 'bash -s' < ec2_user_data.sh
 
+  Deploy_Nginx:
+    needs: Conexion_EC2
+    runs-on: ubuntu-latest
+    steps:      
     - name: Deploy Nginx
       run: |
         ssh -i jenkins.pem -o StrictHostKeyChecking=no ubuntu@${{ steps.ec2-ip.outputs.ec2_ip }} 'kubectl apply -f kubernetes/nginx-deployment.yaml'
