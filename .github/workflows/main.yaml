@@ -4,44 +4,18 @@ on:
     workflow_dispatch:
 
 jobs:
-  Check_Infrastructure:
+  Credenciales:
     runs-on: ubuntu-latest
-    outputs:
-      ec2_exists: ${{ steps.check_ec2.outputs.exists }}
-      cluster_exists: ${{ steps.check_cluster.outputs.exists }}
-      ec2_ip: ${{ steps.get_ec2_ip.outputs.ip }}
     steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
     - name: Configure AWS credentials
       uses: aws-actions/configure-aws-credentials@v2
       with:
         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         aws-region: us-east-1
-
-    - name: Check if EC2 instance exists
-      id: check_ec2
-      run: |
-        if aws cloudformation describe-stacks --stack-name jenkins-ec2-stack &> /dev/null; then
-          echo "exists=true" >> $GITHUB_OUTPUT
-        else
-          echo "exists=false" >> $GITHUB_OUTPUT
-        fi
-
-    - name: Get EC2 Public IP
-      id: get_ec2_ip
-      if: steps.check_ec2.outputs.exists == 'true'
-      run: |
-        EC2_IP=$(aws cloudformation describe-stacks --stack-name jenkins-ec2-stack --query "Stacks[0].Outputs[?OutputKey=='EC2PublicIP'].OutputValue" --output text)
-        echo "ip=$EC2_IP" >> $GITHUB_OUTPUT
-
-    - name: Check if EKS cluster exists
-      id: check_cluster
-      run: |
-        if aws eks describe-cluster --name my-eks-cluster &> /dev/null; then
-          echo "exists=true" >> $GITHUB_OUTPUT
-        else
-          echo "exists=false" >> $GITHUB_OUTPUT
-        fi
 
     - name: Generate SSH key
       run: |
@@ -62,11 +36,12 @@ jobs:
         name: cloudformation-template
         path: cloudformation/ec2-stack.yaml
 
-  Deploy_EC2:
-    needs: Check_Infrastructure
-    if: needs.Check_Infrastructure.outputs.ec2_exists == 'false'
+  Deploy_CloudFormation:
+    needs: Credenciales
     runs-on: ubuntu-latest
-    steps:     
+    outputs:
+      ec2_ip: ${{ steps.ec2-ip.outputs.ec2_ip }}
+    steps:      
     - name: Configure AWS credentials
       uses: aws-actions/configure-aws-credentials@v2
       with:
@@ -122,11 +97,10 @@ jobs:
           jenkins.pem
           connection_info.txt
 
-  Setup_EKS:
-    needs: [Check_Infrastructure, Deploy_EC2]
-    if: needs.Check_Infrastructure.outputs.cluster_exists == 'false'
+  Conexion_EC2:
+    needs: Deploy_CloudFormation
     runs-on: ubuntu-latest
-    steps:
+    steps:  
     - name: Checkout code
       uses: actions/checkout@v3
 
@@ -142,10 +116,11 @@ jobs:
       run: |
         ssh -i jenkins.pem -o StrictHostKeyChecking=no ubuntu@${{ needs.Deploy_CloudFormation.outputs.ec2_ip }} 'bash -s' < ec2_user_data.sh
 
+
   Deploy_Nginx:
-    needs: [Check_Infrastructure, Setup_EKS]
+    needs: [Deploy_CloudFormation, Conexion_EC2]
     runs-on: ubuntu-latest
-    steps:
+    steps:      
     - name: Checkout code
       uses: actions/checkout@v3
 
@@ -159,22 +134,20 @@ jobs:
 
     - name: Deploy Nginx
       run: |
-        EC2_IP=${{ needs.Check_Infrastructure.outputs.ec2_ip }}
-        ssh -i jenkins.pem -o StrictHostKeyChecking=no ubuntu@$EC2_IP 'kubectl apply -f kubernetes/nginx-deployment.yaml'
-        ssh -i jenkins.pem -o StrictHostKeyChecking=no ubuntu@$EC2_IP 'kubectl apply -f kubernetes/nginx-service.yaml'
+        ssh -i jenkins.pem -o StrictHostKeyChecking=no ubuntu@${{ needs.Deploy_CloudFormation.outputs.ec2_ip }} 'kubectl apply -f kubernetes/nginx-deployment.yaml'
+        ssh -i jenkins.pem -o StrictHostKeyChecking=no ubuntu@${{ needs.Deploy_CloudFormation.outputs.ec2_ip }} 'kubectl apply -f kubernetes/nginx-service.yaml'
 
     - name: Get Nginx Service IP
       id: nginx-ip
       run: |
-        EC2_IP=${{ needs.Check_Infrastructure.outputs.ec2_ip }}
-        NGINX_IP=$(ssh -i jenkins.pem -o StrictHostKeyChecking=no ubuntu@$EC2_IP 'kubectl get services nginx-service -o jsonpath="{.status.loadBalancer.ingress[0].hostname}"')
+        NGINX_IP=$(ssh -i jenkins.pem -o StrictHostKeyChecking=no ubuntu@${{ needs.Deploy_CloudFormation.outputs.ec2_ip }} 'kubectl get services nginx-service -o jsonpath="{.status.loadBalancer.ingress[0].hostname}"')
         echo "nginx_ip=$NGINX_IP" >> $GITHUB_OUTPUT
 
     - name: Save connection information
       run: |
-        echo "EC2 Public IP: ${{ needs.Check_Infrastructure.outputs.ec2_ip }}" > connection_info.txt
+        echo "EC2 Public IP: ${{ needs.Deploy_CloudFormation.outputs.ec2_ip }}" > connection_info.txt
         echo "Nginx Service IP: ${{ steps.nginx-ip.outputs.nginx_ip }}" >> connection_info.txt
-        echo "To connect via SSH: ssh -i jenkins.pem ubuntu@${{ needs.Check_Infrastructure.outputs.ec2_ip }}" >> connection_info.txt
+        echo "To connect via SSH: ssh -i jenkins.pem ubuntu@${{ needs.Deploy_CloudFormation.outputs.ec2_ip }}" >> connection_info.txt
 
     - name: Upload connection info
       uses: actions/upload-artifact@v3
