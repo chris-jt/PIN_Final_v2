@@ -117,7 +117,7 @@ jobs:
         ssh -i jenkins.pem -o StrictHostKeyChecking=no ubuntu@${{ needs.Deploy_CloudFormation.outputs.ec2_ip }} 'bash -s' < ec2_user_data.sh
 
   Deploy_Nginx:
-    needs: Deploy_CloudFormation
+    needs: [Deploy_CloudFormation, Conexion_EC2]
     runs-on: ubuntu-latest
     steps:
     - name: Checkout code
