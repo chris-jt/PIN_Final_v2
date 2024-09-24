@@ -136,9 +136,9 @@ jobs:
         EC2_IP=${{ needs.Deploy_CloudFormation.outputs.ec2_ip }}
         ssh -i jenkins.pem -o StrictHostKeyChecking=no ubuntu@$EC2_IP '
           sudo apt-get update && sudo apt-get install -y apt-transport-https          
-          echo "deb https://apt.kubernetes.io/ kubernetes-xenial main" | sudo tee -a /etc/apt/sources.list.d/kubernetes.list
+          curl -LO https://dl.k8s.io/release/v1.30.0/bin/linux/amd64/kubectl
           sudo apt-get update
-          sudo apt-get install -y kubectl
+          sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
           aws eks get-token --cluster-name my-eks-cluster | kubectl apply -f -
         '
 
