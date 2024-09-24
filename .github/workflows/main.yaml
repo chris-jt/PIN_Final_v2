@@ -61,12 +61,11 @@ jobs:
         path: cloudformation
 
     - name: Deploy CloudFormation stack
-      id: deploy-cfn
-      #colocar stakc-name como variable
+      id: deploy-cfn     
       run: |
         aws cloudformation deploy \
           --template-file cloudformation/ec2-stack.yaml \
-          --stack-name jenkins-ec2-stack \  
+          --stack-name jenkins-ec2-stack \
           --parameter-overrides KeyName=jenkins PublicKeyMaterial="$(cat jenkins.pub)" \
           --capabilities CAPABILITY_IAM
 
