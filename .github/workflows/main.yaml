@@ -133,7 +133,7 @@ jobs:
 
     - name: Install and configure kubectl on EC2
       run: |
-        EC2_IP=${{ needs.Check_Infrastructure.outputs.ec2_ip }}
+        EC2_IP=${{ needs.Deploy_CloudFormation.outputs.ec2_ip }}
         ssh -i jenkins.pem -o StrictHostKeyChecking=no ubuntu@$EC2_IP '
           sudo apt-get update && sudo apt-get install -y apt-transport-https
           curl -s https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo apt-key add -
@@ -145,7 +145,7 @@ jobs:
 
     - name: Deploy Nginx
       run: |
-        EC2_IP=${{ needs.Check_Infrastructure.outputs.ec2_ip }}
+        EC2_IP=${{ needs.Deploy_CloudFormation.outputs.ec2_ip }}
         ssh -i jenkins.pem -o StrictHostKeyChecking=no ubuntu@$EC2_IP '
           kubectl apply -f kubernetes/nginx-deployment.yaml
           kubectl apply -f kubernetes/nginx-service.yaml
@@ -154,15 +154,15 @@ jobs:
     - name: Get Nginx Service IP
       id: nginx-ip
       run: |
-        EC2_IP=${{ needs.Check_Infrastructure.outputs.ec2_ip }}
+        EC2_IP=${{ needs.Deploy_CloudFormation.outputs.ec2_ip }}
         NGINX_IP=$(ssh -i jenkins.pem -o StrictHostKeyChecking=no ubuntu@$EC2_IP 'kubectl get services nginx-service -o jsonpath="{.status.loadBalancer.ingress[0].hostname}"')
         echo "nginx_ip=$NGINX_IP" >> $GITHUB_OUTPUT
 
     - name: Save connection information
       run: |
-        echo "EC2 Public IP: ${{ needs.Check_Infrastructure.outputs.ec2_ip }}" > connection_info.txt
+        echo "EC2 Public IP: ${{ needs.Deploy_CloudFormation.outputs.ec2_ip }}" > connection_info.txt
         echo "Nginx Service IP: ${{ steps.nginx-ip.outputs.nginx_ip }}" >> connection_info.txt
-        echo "To connect via SSH: ssh -i jenkins.pem ubuntu@${{ needs.Check_Infrastructure.outputs.ec2_ip }}" >> connection_info.txt
+        echo "To connect via SSH: ssh -i jenkins.pem ubuntu@${{ needs.Deploy_CloudFormation.outputs.ec2_ip }}" >> connection_info.txt
 
     - name: Upload connection info
       uses: actions/upload-artifact@v3
