@@ -29,47 +29,42 @@ handle_error() {
 log "Actualizando el sistema..."
 sudo apt-get update && sudo apt-get upgrade -y || handle_error "No se pudo actualizar el sistema"
 
-echo "Installing Unzip"
+echo "INSTALANDO Unzip"
 wait_for_apt
 sudo apt-get update
 sudo apt-get install -y unzip
 unzip -v
 
 # Instalar dependencias
-log "Instalando dependencias..."
+log "INSTALANDO dependencias..."
 sudo apt-get install -y apt-transport-https ca-certificates curl software-properties-common || handle_error "No se pudieron instalar las dependencias"
 
 ## Instalar Docker
-log "Instalando Docker..."
+log "INSTALANDO Docker..."
 curl -fsSL https://get.docker.com -o get-docker.sh || handle_error "No se pudo descargar el script de Docker"
 sudo sh get-docker.sh || handle_error "No se pudo instalar Docker"
 sudo usermod -aG docker ubuntu || handle_error "No se pudo añadir el usuario al grupo docker"
 
-echo "Installing Docker Compose"
+echo "INSTALANDO Docker Compose"
 sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
 sudo chmod +x /usr/local/bin/docker-compose
 docker-compose --version
 
 # Instalar kubectl
-log "Instalando kubectl..."
+log "INSTALANDO kubectl..."
 curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl" || handle_error "No se pudo descargar kubectl"
 sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl || handle_error "No se pudo instalar kubectl"
 
 # Instalar eksctl
-log "Instalando eksctl..."
+log "INSTALANDO eksctl..."
 curl --silent --location "https://github.com/weaveworks/eksctl/releases/latest/download/eksctl_$(uname -s)_amd64.tar.gz" | tar xz -C /tmp || handle_error "No se pudo descargar eksctl"
 sudo mv /tmp/eksctl /usr/local/bin || handle_error "No se pudo mover eksctl a /usr/local/bin"
 
 # Instalar AWS CLI
-log "Instalando AWS CLI..."
+log "INSTALANDO AWS CLI..."
 curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip" || handle_error "No se pudo descargar AWS CLI"
 unzip awscliv2.zip || handle_error "No se pudo descomprimir AWS CLI"
 sudo ./aws/install || handle_error "No se pudo instalar AWS CLI"
-
-# Actualizar AWS CLI
-curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
-unzip awscliv2.zip
-sudo ./aws/install --update
 
 # Instalar aws-iam-authenticator
 curl -o aws-iam-authenticator https://amazon-eks.s3.us-west-2.amazonaws.com/1.21.2/2021-07-05/bin/linux/amd64/aws-iam-authenticator
