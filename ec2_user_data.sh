@@ -2,7 +2,7 @@
 set -x
 
 # Variables de entorno
-export CLUSTER_NAME=${CLUSTER_NAME}
+export CLUSTER_NAME=${CLUSTER_NAME:-"cluster-PIN"}
 export AWS_REGION=${AWS_REGION:-"us-east-1"}
 export NODE_TYPE=${NODE_TYPE:-"t3.medium"}
 export NODE_COUNT=${NODE_COUNT:-2}
