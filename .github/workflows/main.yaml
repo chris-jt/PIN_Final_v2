@@ -3,6 +3,12 @@ name: Deploy EKS Cluster and Nginx
 on:
     workflow_dispatch:
 
+env:
+  AWS_REGION: us-east-1
+  CLUSTER_NAME: my-eks-cluster      
+  NODE_TYPE: t3.medium
+  NODE_COUNT: 2
+
 jobs:
   Credenciales:
     runs-on: ubuntu-latest
@@ -76,7 +82,9 @@ jobs:
         echo "ec2_ip=$EC2_IP" >> $GITHUB_OUTPUT
 
     - name: Wait for EC2 instance to be ready
-      run: sleep 60
+      run: |
+        echo "Waiting for EC2 instance to be ready..."
+        timeout 300 bash -c 'until nc -z ${{ steps.ec2-ip.outputs.ec2_ip }} 22; do sleep 5; done'
 
     - name: Setup AWS credentials on EC2
       run: |
@@ -115,6 +123,11 @@ jobs:
     - name: Connect to EC2 and setup cluster
       run: |
         ssh -i jenkins.pem -o StrictHostKeyChecking=no ubuntu@${{ needs.Deploy_CloudFormation.outputs.ec2_ip }} 'bash -s' < ec2_user_data.sh
+      env:
+        CLUSTER_NAME: ${{ env.CLUSTER_NAME }}
+        AWS_REGION: ${{ env.AWS_REGION }}
+        NODE_TYPE: ${{ env.NODE_TYPE }}
+        NODE_COUNT: ${{ env.NODE_COUNT }}
 
   Deploy_Nginx:
     needs: [Deploy_CloudFormation, Conexion_EC2]
@@ -131,19 +144,20 @@ jobs:
     - name: Set permissions for SSH key
       run: chmod 600 jenkins.pem
 
-    - name: Install and configure kubectl on EC2
+    - name: Configure kubectl on EC2
       run: |
         EC2_IP=${{ needs.Deploy_CloudFormation.outputs.ec2_ip }}
         ssh -i jenkins.pem -o StrictHostKeyChecking=no ubuntu@$EC2_IP '      
-        aws eks get-token --cluster-name my-eks-cluster | kubectl apply -f -
+        aws eks get-token --cluster-name ${{ env.CLUSTER_NAME }} | kubectl apply -f -
         '
 
     - name: Deploy Nginx
       run: |
         EC2_IP=${{ needs.Deploy_CloudFormation.outputs.ec2_ip }}
+        scp -i jenkins.pem -o StrictHostKeyChecking=no kubernetes/nginx-deployment.yaml kubernetes/nginx-service.yaml ubuntu@$EC2_IP:~
         ssh -i jenkins.pem -o StrictHostKeyChecking=no ubuntu@$EC2_IP '
-          kubectl apply -f kubernetes/nginx-deployment.yaml
-          kubectl apply -f kubernetes/nginx-service.yaml
+          kubectl apply -f nginx-deployment.yaml
+          kubectl apply -f nginx-service.yaml
         '
 
     - name: Get Nginx Service IP

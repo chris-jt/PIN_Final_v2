@@ -1,6 +1,12 @@
 #!/bin/bash
 set -e
 
+# Variables de entorno
+export CLUSTER_NAME=${CLUSTER_NAME:-"my-eks-cluster"}
+export AWS_REGION=${AWS_REGION:-"us-east-1"}
+export NODE_TYPE=${NODE_TYPE:-"t3.medium"}
+export NODE_COUNT=${NODE_COUNT:-2}
+
 # Función para esperar a que apt esté disponible
 wait_for_apt() {
   while sudo fuser /var/lib/dpkg/lock >/dev/null 2>&1 ; do
@@ -8,30 +14,20 @@ wait_for_apt() {
     sleep 5
   done
 }
-
-handle_error() {
-  echo "Error en la línea $1"
-  exit 1
+# Función para logging
+log() {
+    echo "[$(date +'%Y-%m-%d %H:%M:%S')] $1"
 }
 
-trap 'handle_error $LINENO' ERR
+# Función para manejar errores
+handle_error() {
+    log "ERROR: $1"
+    exit 1
+}
 
-echo "Preparando el sistema..."
-sudo mount -o remount,rw /
-
-echo "Limpiando posibles bloqueos de apt..."
-sudo rm -f /var/lib/apt/lists/lock
-sudo rm -f /var/cache/apt/archives/lock
-sudo rm -f /var/lib/dpkg/lock*
-
-echo "Deshabilitando temporalmente command-not-found..."
-sudo mv /usr/lib/cnf-update-db /usr/lib/cnf-update-db.bak || true
-sudo touch /usr/lib/cnf-update-db
-sudo chmod +x /usr/lib/cnf-update-db
-
-echo "Limpiando y actualizando APT..."
-sudo apt-get clean
-sudo apt-get update --fix-missing
+# Actualizar el sistema
+log "Actualizando el sistema..."
+sudo apt-get update && sudo apt-get upgrade -y || handle_error "No se pudo actualizar el sistema"
 
 echo "Installing Unzip"
 wait_for_apt
@@ -39,42 +35,53 @@ sudo apt-get update
 sudo apt-get install -y unzip
 unzip -v
 
-echo "Installing AWS CLI"
-curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
-unzip awscliv2.zip
-sudo ./aws/install --update
-aws --version
+# Instalar dependencias
+log "Instalando dependencias..."
+sudo apt-get install -y apt-transport-https ca-certificates curl software-properties-common || handle_error "No se pudieron instalar las dependencias"
 
-echo "installing transport-https"
-#wait_for_apt
-#sudo apt-get update && sudo apt-get install --validate=false apt-transport-https 
-
-echo "Installing kubectl"
-wait_for_apt
-#sudo apt-get install -y kubectl
-curl -O https://s3.us-west-2.amazonaws.com/amazon-eks/1.30.2/2024-07-12/bin/linux/amd64/kubectl
-chmod +x ./kubectl
-mkdir -p $HOME/bin && cp ./kubectl $HOME/bin/kubectl && export PATH=$PATH:$HOME/bin
-echo 'export PATH=$PATH:$HOME/bin' >> ~/.bashrc
-kubectl version --client
-
-#echo "Installing eksctl"
-#curl --silent --location "https://github.com/eksctl-io/eksctl/releases/latest/download/eksctl_$(uname -s)_amd64.tar.gz" | tar xz -C /tmp
-#sudo mv /tmp/eksctl /usr/local/bin
-#eksctl version
-
-echo "Installing Docker"
-wait_for_apt
-sudo apt-get install -y docker.io
-sudo systemctl start docker
-sudo systemctl enable docker
-sudo usermod -aG docker $USER
-newgrp docker
+## Instalar Docker
+log "Instalando Docker..."
+curl -fsSL https://get.docker.com -o get-docker.sh || handle_error "No se pudo descargar el script de Docker"
+sudo sh get-docker.sh || handle_error "No se pudo instalar Docker"
+sudo usermod -aG docker ubuntu || handle_error "No se pudo añadir el usuario al grupo docker"
 
 echo "Installing Docker Compose"
 sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
 sudo chmod +x /usr/local/bin/docker-compose
 docker-compose --version
+
+# Instalar kubectl
+log "Instalando kubectl..."
+curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl" || handle_error "No se pudo descargar kubectl"
+sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl || handle_error "No se pudo instalar kubectl"
+
+# Instalar eksctl
+log "Instalando eksctl..."
+curl --silent --location "https://github.com/weaveworks/eksctl/releases/latest/download/eksctl_$(uname -s)_amd64.tar.gz" | tar xz -C /tmp || handle_error "No se pudo descargar eksctl"
+sudo mv /tmp/eksctl /usr/local/bin || handle_error "No se pudo mover eksctl a /usr/local/bin"
+
+# Instalar AWS CLI
+log "Instalando AWS CLI..."
+curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip" || handle_error "No se pudo descargar AWS CLI"
+unzip awscliv2.zip || handle_error "No se pudo descomprimir AWS CLI"
+sudo ./aws/install || handle_error "No se pudo instalar AWS CLI"
+
+# Crear cluster EKS
+log "Creando cluster EKS..."
+eksctl create cluster --name $CLUSTER_NAME --region $AWS_REGION --node-type $NODE_TYPE --nodes $NODE_COUNT || handle_error "No se pudo crear el cluster EKS"
+
+# Configurar kubectl para el nuevo cluster
+log "Configurando kubectl para el nuevo cluster..."
+aws eks get-token --cluster-name $CLUSTER_NAME | kubectl apply -f - || handle_error "No se pudo configurar kubectl"
+
+# Verificar que los nodos estén listos
+log "Verificando que los nodos estén listos..."
+kubectl get nodes --watch &
+PID=$!
+sleep 60
+kill $PID
+
+log "Configuración completada. El cluster EKS está listo para usar."
 
 echo "Installing Helm"
 curl https://raw.githubusercontent.com/helm/helm/master/scripts/get-helm-3 | bash
@@ -84,19 +91,10 @@ helm version
 helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
 helm repo update
 
-# Crear cluster EKS
-echo "Creating EKS cluster..."
-eksctl create cluster --name mi-cluster-eks --region us-east-1 --node-type t3.small --nodes 2
-
-# Configurar kubectl
-aws eks get-token --cluster-name mi-cluster-eks | kubectl apply -f -
-
-echo "Cluster created successfully"
-
 # Asegurarse de que las configuraciones estén disponibles para el usuario ubuntu
 mkdir -p /home/ubuntu/.kube
 mkdir -p /root/.kube
-sudo cp /root/.kube/config /home/ubuntu/.kube/config
+sudo sudo cp /root/.kube/config /home/ubuntu/.kube/config
 sudo chown ubuntu:ubuntu /home/ubuntu/.kube/config
 
 # Añadir kubectl al PATH del usuario ubuntu
