@@ -1,8 +1,8 @@
 #!/bin/bash
-set -e
+set -x
 
 # Variables de entorno
-export CLUSTER_NAME=${CLUSTER_NAME:-"my-eks-cluster"}
+export CLUSTER_NAME=${CLUSTER_NAME}
 export AWS_REGION=${AWS_REGION:-"us-east-1"}
 export NODE_TYPE=${NODE_TYPE:-"t3.medium"}
 export NODE_COUNT=${NODE_COUNT:-2}
@@ -66,13 +66,31 @@ curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip
 unzip awscliv2.zip || handle_error "No se pudo descomprimir AWS CLI"
 sudo ./aws/install || handle_error "No se pudo instalar AWS CLI"
 
+# Actualizar AWS CLI
+curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+unzip awscliv2.zip
+sudo ./aws/install --update
+
+# Instalar aws-iam-authenticator
+curl -o aws-iam-authenticator https://amazon-eks.s3.us-west-2.amazonaws.com/1.21.2/2021-07-05/bin/linux/amd64/aws-iam-authenticator
+chmod +x ./aws-iam-authenticator
+sudo mv ./aws-iam-authenticator /usr/local/bin
+
 # Crear cluster EKS
 log "Creando cluster EKS..."
 eksctl create cluster --name $CLUSTER_NAME --region $AWS_REGION --node-type $NODE_TYPE --nodes $NODE_COUNT || handle_error "No se pudo crear el cluster EKS"
 
-# Configurar kubectl para el nuevo cluster
-log "Configurando kubectl para el nuevo cluster..."
-aws eks get-token --cluster-name $CLUSTER_NAME | kubectl apply -f - || handle_error "No se pudo configurar kubectl"
+echo "Configurando kubectl para el nuevo cluster..."
+if ! aws eks update-kubeconfig --name $CLUSTER_NAME --region $AWS_REGION; then
+    echo "Error al actualizar kubeconfig"
+    exit 1
+fi
+
+echo "Contenido de kubeconfig:"
+cat ~/.kube/config
+
+echo "Versión de kubectl:"
+kubectl version --client
 
 # Verificar que los nodos estén listos
 log "Verificando que los nodos estén listos..."
@@ -80,6 +98,15 @@ kubectl get nodes --watch &
 PID=$!
 sleep 60
 kill $PID
+
+echo "Versión de AWS CLI:"
+aws --version
+
+echo "Probando conexión al cluster:"
+if ! kubectl get nodes; then
+    echo "Error al conectar con el cluster"
+    exit 1
+fi
 
 log "Configuración completada. El cluster EKS está listo para usar."
 
@@ -101,6 +128,6 @@ sudo chown ubuntu:ubuntu /home/ubuntu/.kube/config
 echo 'export PATH=$PATH:/usr/local/bin' >> /home/ubuntu/.bashrc
 source /home/ubuntu/.bashrc
 
-aws eks update-kubeconfig --region us-east-1 --name my-cluster-eks
+aws eks update-kubeconfig --name $CLUSTER_NAME --region $AWS_REGION
 
 echo "All necessary tools have been installed and cluster is ready."
