@@ -167,6 +167,28 @@ jobs:
           kubectl apply -f nginx-deployment.yaml
           kubectl apply -f nginx-service.yaml
         '
+        # Esperar a que el pod esté listo
+        kubectl wait --for=condition=ready pod -l app=nginx --timeout=300s
+      
+        # Verificar el estado del despliegue
+        kubectl get deployments
+        kubectl get pods
+        kubectl get services
+
+    - name: Get Nginx Service URL
+      id: nginx-url
+      run: |
+          EC2_IP=${{ needs.Deploy_CloudFormation.outputs.ec2_ip }}
+          NGINX_URL=$(ssh -i jenkins.pem -o StrictHostKeyChecking=no ubuntu@$EC2_IP '
+            kubectl get service nginx-service -o jsonpath="{.status.loadBalancer.ingress[0].hostname}"
+          ')
+          echo "nginx_url=http://$NGINX_URL" >> $GITHUB_OUTPUT
+      
+    - name: Save connection information
+      run: |
+          echo "EC2 Public IP: ${{ needs.Deploy_CloudFormation.outputs.ec2_ip }}" > connection_info.txt
+          echo "Nginx Service URL: ${{ steps.nginx-url.outputs.nginx_url }}" >> connection_info.txt
+          echo "To connect via SSH: ssh -i jenkins.pem ubuntu@${{ needs.Deploy_CloudFormation.outputs.ec2_ip }}" >> connection_info.txt
 
     - name: Get Nginx Service IP
       id: nginx-ip
@@ -174,12 +196,6 @@ jobs:
         EC2_IP=${{ needs.Deploy_CloudFormation.outputs.ec2_ip }}
         NGINX_IP=$(ssh -i jenkins.pem -o StrictHostKeyChecking=no ubuntu@$EC2_IP 'kubectl get services nginx-service -o jsonpath="{.status.loadBalancer.ingress[0].hostname}"')
         echo "nginx_ip=$NGINX_IP" >> $GITHUB_OUTPUT
-
-    - name: Save connection information
-      run: |
-        echo "EC2 Public IP: ${{ needs.Deploy_CloudFormation.outputs.ec2_ip }}" > connection_info.txt
-        echo "Nginx Service IP: ${{ steps.nginx-ip.outputs.nginx_ip }}" >> connection_info.txt
-        echo "To connect via SSH: ssh -i jenkins.pem ubuntu@${{ needs.Deploy_CloudFormation.outputs.ec2_ip }}" >> connection_info.txt
 
     - name: Upload connection info
       uses: actions/upload-artifact@v3
