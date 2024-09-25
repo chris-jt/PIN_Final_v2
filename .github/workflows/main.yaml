@@ -156,8 +156,7 @@ jobs:
       run: |
         EC2_IP=${{ needs.Deploy_CloudFormation.outputs.ec2_ip }}
         ssh -i jenkins.pem -o StrictHostKeyChecking=no ubuntu@$EC2_IP '
-        aws eks get-token --cluster-name ${{ env.CLUSTER_NAME }} | kubectl apply -f - && \
-        aws eks update-kubeconfig --name ${{ env.CLUSTER_NAME }} && \
+        aws eks update-kubeconfig --name ${{ env.CLUSTER_NAME }} --region ${{ env.AWS_REGION }} && \
         kubectl get nodes'
         
     - name: Deploy Nginx
