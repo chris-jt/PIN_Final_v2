@@ -45,6 +45,10 @@ unzip awscliv2.zip
 sudo ./aws/install --update
 aws --version
 
+echo "installing transport-https"
+wait_for_apt
+sudo apt-get update && sudo apt-get install -y apt-transport-https --validate=false
+
 echo "Installing kubectl"
 wait_for_apt
 #sudo apt-get install -y kubectl

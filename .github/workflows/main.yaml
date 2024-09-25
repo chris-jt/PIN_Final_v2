@@ -134,12 +134,8 @@ jobs:
     - name: Install and configure kubectl on EC2
       run: |
         EC2_IP=${{ needs.Deploy_CloudFormation.outputs.ec2_ip }}
-        ssh -i jenkins.pem -o StrictHostKeyChecking=no ubuntu@$EC2_IP '
-          sudo apt-get update && sudo apt-get install -y apt-transport-https          
-          curl -LO https://dl.k8s.io/release/v1.30.0/bin/linux/amd64/kubectl
-          sudo apt-get update
-          sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
-          aws eks get-token --cluster-name my-eks-cluster | kubectl apply -f -
+        ssh -i jenkins.pem -o StrictHostKeyChecking=no ubuntu@$EC2_IP '      
+        aws eks get-token --cluster-name my-eks-cluster | kubectl apply -f -
         '
 
     - name: Deploy Nginx
