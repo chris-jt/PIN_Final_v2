@@ -8,6 +8,7 @@ env:
   CLUSTER_NAME: my-eks-cluster      
   NODE_TYPE: t3.medium
   NODE_COUNT: 2
+  AMI_ID: ami-0261755bbcb8c4a84  # AMI ID for Ubuntu 20.04 LTS in us-east-1
 
 jobs:
   Credenciales:
@@ -21,7 +22,7 @@ jobs:
       with:
         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        aws-region: us-east-1
+        aws-region: ${{ env.AWS_REGION }}
 
     - name: Generate SSH key
       run: |
@@ -53,7 +54,7 @@ jobs:
       with:
         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        aws-region: us-east-1
+        aws-region: ${{ env.AWS_REGION }}
 
     - name: Download SSH key
       uses: actions/download-artifact@v3
@@ -72,8 +73,15 @@ jobs:
         aws cloudformation deploy \
           --template-file cloudformation/ec2-stack.yaml \
           --stack-name jenkins-ec2-stack \
-          --parameter-overrides KeyName=jenkins PublicKeyMaterial="$(cat jenkins.pub)" \
+          --parameter-overrides \
+            KeyName=jenkins \
+            PublicKeyMaterial="$(cat jenkins.pub)" \
+            InstanceType="${{ env.NODE_TYPE }}" \
+            AMI="${{ env.AMI_ID }}" \
           --capabilities CAPABILITY_IAM
+      env:
+        NODE_TYPE: ${{ env.NODE_TYPE }}
+        AMI_ID: ${{ env.AMI_ID }}
 
     - name: Get EC2 Public IP
       id: ec2-ip
@@ -94,7 +102,7 @@ jobs:
         echo "[default]
         aws_access_key_id=${{ secrets.AWS_ACCESS_KEY_ID }}
         aws_secret_access_key=${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        region=us-east-1" > ~/.aws/credentials
+        region=${{ env.AWS_REGION }}" > ~/.aws/credentials
         '
 
     - name: Upload SSH key and connection info

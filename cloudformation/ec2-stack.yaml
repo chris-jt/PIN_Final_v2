@@ -8,8 +8,16 @@ Parameters:
   PublicKeyMaterial:
     Description: The public key material
     Type: String
+  InstanceType:
+    Description: EC2 instance type
+    Type: String
+    Default: t2.medium
+  AMI:
+    Description: AMI ID for the EC2 instance
+    Type: String
+    Default: ami-0261755bbcb8c4a84  # Ubuntu 20.04 LTS
 
-RResources:
+Resources:
   JenkinsSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
@@ -56,11 +64,11 @@ RResources:
   JenkinsInstance:
     Type: AWS::EC2::Instance
     Properties:
-      InstanceType: t2.medium
+      InstanceType: !Ref InstanceType
       SecurityGroups:
         - !Ref JenkinsSecurityGroup
       KeyName: !Ref KeyName
-      ImageId: ami-0261755bbcb8c4a84  # Ubuntu 20.04 LTS
+      ImageId: !Ref AMI
       IamInstanceProfile: !Ref JenkinsInstanceProfile
       Tags:
         - Key: Name
@@ -69,4 +77,4 @@ RResources:
 Outputs:
   EC2PublicIP:
     Description: Public IP address of the Jenkins instance
-    Value: !GetAtt JenkinsInstance.PublicIpcI
+    Value: !GetAtt JenkinsInstance.PublicIp
