@@ -46,8 +46,8 @@ sudo ./aws/install --update
 aws --version
 
 echo "installing transport-https"
-wait_for_apt
-sudo apt-get update && sudo apt-get install -y apt-transport-https --validate=false
+#wait_for_apt
+#sudo apt-get update && sudo apt-get install --validate=false apt-transport-https 
 
 echo "Installing kubectl"
 wait_for_apt

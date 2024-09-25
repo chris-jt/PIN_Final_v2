@@ -76,7 +76,7 @@ jobs:
         echo "ec2_ip=$EC2_IP" >> $GITHUB_OUTPUT
 
     - name: Wait for EC2 instance to be ready
-      run: sleep 200
+      run: sleep 60
 
     - name: Setup AWS credentials on EC2
       run: |
